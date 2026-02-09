@@ -63,40 +63,28 @@ function TokenCallback({ tokens, onClose }) {
     fontSize: "15px"
   };
 
-  const tokenValueStyle = {
-    backgroundColor: "#f5f5f5",
-    padding: "12px",
-    borderRadius: "4px",
-    margin: "12px 0",
-    fontSize: "12px",
-    wordBreak: "break-all",
-    fontFamily: "monospace",
-    color: "#333"
+  const spinnerStyle = {
+    width: "40px",
+    height: "40px",
+    border: "4px solid rgba(74, 107, 255, 0.2)",
+    borderRadius: "50%",
+    borderTopColor: "#4a6bff",
+    animation: "spin 1s ease-in-out infinite",
+    margin: "0 auto 16px"
   };
 
   return (
     <div style={containerStyle}>
       <div style={cardStyle}>
-        <h2 style={headingStyle}>✓ Login Successful</h2>
-        <p style={textStyle}>Your credentials have been securely passed to the app.</p>
-        
-        {tokens && (
-          <div>
-            <p style={{...textStyle, marginTop: "24px", fontWeight: "600"}}>Tokens:</p>
-            <div style={tokenValueStyle}>
-              <strong>Access Token:</strong>
-              <div>{tokens.accessToken?.substring(0, 20)}...</div>
-            </div>
-            <div style={tokenValueStyle}>
-              <strong>Refresh Token:</strong>
-              <div>{tokens.refreshToken ? tokens.refreshToken.substring(0, 20) + "..." : "N/A"}</div>
-            </div>
-            <p style={{...textStyle, fontSize: "13px", color: "#999", marginTop: "20px"}}>
-              You can close this window now.
-            </p>
-          </div>
-        )}
+        <div style={spinnerStyle}></div>
+        <h2 style={headingStyle}>✓ Authenticated</h2>
+        <p style={textStyle}>Connecting to app...</p>
       </div>
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
