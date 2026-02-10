@@ -3,21 +3,22 @@ import React, { useEffect } from 'react';
 function TokenCallback({ tokens, onClose }) {
   useEffect(() => {
     if (tokens) {
-      // Expose tokens via Print.postMessage() to Dart/Flutter WebView
+      // Expose tokens via KingsListAuth.postMessage() to Dart/Flutter WebView
       const tokenData = {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || "",
         expiresIn: tokens.expiresIn || 3600,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        profile: tokens.profile || null
       };
 
-      console.log("Sending tokens to Dart app via Print.postMessage");
+      console.log("Sending tokens to Dart app via KingsListAuth.postMessage");
       
       // Send to Dart WebView
-      if (window.Print && window.Print.postMessage) {
-        window.Print.postMessage(JSON.stringify(tokenData));
+      if (window.KingsListAuth && window.KingsListAuth.postMessage) {
+        window.KingsListAuth.postMessage(JSON.stringify(tokenData));
       } else {
-        console.warn("Print.postMessage not available - may not be running in Dart WebView");
+        console.warn("KingsListAuth.postMessage not available - may not be running in Dart WebView");
       }
 
       // Close after a short delay to ensure message is sent
