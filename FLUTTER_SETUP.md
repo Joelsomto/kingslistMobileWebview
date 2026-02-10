@@ -4,7 +4,7 @@ This document explains how to set up your Flutter app to receive authentication 
 
 ## Important: Hosting the React Login Page
 
-The React login page is hosted separately from your Flutter app (typically on a domain like Vercel, your own server, etc.). Your Flutter app will **load this page in a WebView** and intercept the token messages sent via `Print.postMessage()`.
+The React login page is hosted separately from your Flutter app (typically on a domain like Vercel, your own server, etc.). Your Flutter app will **load this page in a WebView** and intercept the token messages sent via `KingsListAuth.postMessage()`.
 
 ### Deployment Steps:
 
@@ -25,7 +25,7 @@ The React login page is hosted separately from your Flutter app (typically on a 
 
 ## Overview
 
-The React login page exposes authentication tokens to your Flutter app using the `Print.postMessage()` method. After the user successfully logs in on the hosted webpage (loaded in WebView), the tokens are automatically sent to your Flutter app, which needs to listen for and handle these messages.
+The React login page exposes authentication tokens to your Flutter app using the `KingsListAuth.postMessage()` method. After the user successfully logs in on the hosted webpage (loaded in WebView), the tokens are automatically sent to your Flutter app, which needs to listen for and handle these messages.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ Authenticate with KingsChat SDK
          ↓
 Tokens Generated
          ↓
-Print.postMessage(tokenData) ← Sent to Flutter
+KingsListAuth.postMessage(tokenData) ← Sent to Flutter
          ↓
 Flutter Receives via JavaScript Channel
          ↓
@@ -53,8 +53,18 @@ The tokens are sent as a JSON string with the following structure:
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "refreshToken": "refresh_token_value...",
-  "expiresIn": 3600,
-  "timestamp": 1707000000000
+  "expiresIn": 3600000,
+  "timestamp": 1707000000000,
+  "profile": {
+    "id": "user_unique_id",
+    "email": "user_email@example.com",
+    "name": "User Name",
+    "username": "user_username",
+    "phone_number": "+2348000000000",
+    "gender": "male",
+    "birth_date_millis": 1700000000000,
+    "avatar": "https://example.com/avatar.png"
+  }
 }
 ```
 
@@ -62,8 +72,9 @@ The tokens are sent as a JSON string with the following structure:
 
 - **accessToken**: JWT token used to authenticate API requests
 - **refreshToken**: Token used to refresh the access token when it expires
-- **expiresIn**: Token expiration time in seconds (typically 3600 = 1 hour)
+- **expiresIn**: Token expiration time in milliseconds (typically 3600000 = 1 hour)
 - **timestamp**: When the tokens were generated (milliseconds since epoch)
+- **profile**: User profile data (object, optional if profile fetch fails)
 
 ## Flutter Implementation
 
@@ -120,7 +131,7 @@ class _LoginWebViewState extends State<LoginWebView> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
-        'Print',
+        'KingsListAuth',
         onMessageReceived: (JavaScriptMessage message) {
           _handleTokenMessage(message.message);
         },
@@ -137,8 +148,9 @@ class _LoginWebViewState extends State<LoginWebView> {
       
       final String accessToken = tokenData['accessToken'];
       final String refreshToken = tokenData['refreshToken'] ?? '';
-      final int expiresIn = tokenData['expiresIn'] ?? 3600;
+      final int expiresIn = tokenData['expiresIn'] ?? 3600000;
       final int timestamp = tokenData['timestamp'] ?? 0;
+      final Map<String, dynamic>? profile = tokenData['profile'];
 
       // Store tokens securely
       _saveTokensSecurely(
@@ -146,6 +158,7 @@ class _LoginWebViewState extends State<LoginWebView> {
         refreshToken: refreshToken,
         expiresIn: expiresIn,
         timestamp: timestamp,
+        profile: profile,
       );
 
       // Navigate to home screen or main app
@@ -161,6 +174,7 @@ class _LoginWebViewState extends State<LoginWebView> {
     required String refreshToken,
     required int expiresIn,
     required int timestamp,
+    Map<String, dynamic>? profile,
   }) {
     // TODO: Implement secure token storage
     // Use flutter_secure_storage or similar
@@ -171,6 +185,9 @@ class _LoginWebViewState extends State<LoginWebView> {
     // await secureStorage.write(key: 'refresh_token', value: refreshToken);
     // await secureStorage.write(key: 'token_expires_in', value: expiresIn.toString());
     // await secureStorage.write(key: 'token_timestamp', value: timestamp.toString());
+    // if (profile != null) {
+    //   await secureStorage.write(key: 'user_profile', value: jsonEncode(profile));
+    // }
     
     print('Tokens stored successfully');
   }
@@ -222,6 +239,7 @@ class TokenStorage {
     required String refreshToken,
     required int expiresIn,
     required int timestamp,
+    Map<String, dynamic>? profile,
   }) async {
     await Future.wait([
       _secureStorage.write(key: 'access_token', value: accessToken),
@@ -229,6 +247,10 @@ class TokenStorage {
       _secureStorage.write(key: 'token_expires_in', value: expiresIn.toString()),
       _secureStorage.write(key: 'token_timestamp', value: timestamp.toString()),
     ]);
+
+    if (profile != null) {
+      await _secureStorage.write(key: 'user_profile', value: jsonEncode(profile));
+    }
   }
 
   static Future<String?> getAccessToken() async {
@@ -246,7 +268,7 @@ class TokenStorage {
     if (timestamp == null || expiresIn == null) return true;
     
     final tokenTime = int.parse(timestamp);
-    final expiration = int.parse(expiresIn) * 1000; // Convert to milliseconds
+    final expiration = int.parse(expiresIn);
     final now = DateTime.now().millisecondsSinceEpoch;
     
     return now > (tokenTime + expiration);
@@ -258,6 +280,7 @@ class TokenStorage {
       _secureStorage.delete(key: 'refresh_token'),
       _secureStorage.delete(key: 'token_expires_in'),
       _secureStorage.delete(key: 'token_timestamp'),
+      _secureStorage.delete(key: 'user_profile'),
     ]);
   }
 }
@@ -418,7 +441,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       )
       ..addJavaScriptChannel(
-        'Print',
+        'KingsListAuth',
         onMessageReceived: (JavaScriptMessage message) {
           _handleTokens(message.message);
         },
@@ -438,8 +461,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await TokenStorage.saveTokens(
         accessToken: tokenData['accessToken'],
         refreshToken: tokenData['refreshToken'] ?? '',
-        expiresIn: tokenData['expiresIn'] ?? 3600,
+        expiresIn: tokenData['expiresIn'] ?? 3600000,
         timestamp: tokenData['timestamp'] ?? DateTime.now().millisecondsSinceEpoch,
+        profile: tokenData['profile'],
       );
 
       // Navigate to home screen
@@ -495,20 +519,21 @@ MaterialApp(
 
 ## Key Points for Flutter Developers
 
-1. **JavaScript Channel**: Register a `Print` JavaScript channel in your WebViewController
-2. **JSON Parsing**: Parse the incoming message as JSON to extract token fields
-3. **Secure Storage**: Always use `flutter_secure_storage` for token storage, never plain SharedPreferences
-4. **Token Expiry**: Check if token has expired before making API calls
-5. **Token Refresh**: Implement token refresh logic using the refresh token
-6. **Error Handling**: Handle cases where tokens are missing or invalid
-7. **Navigation**: After successful token receipt, navigate away from login screen
+1. **JavaScript Channel**: Register a `KingsListAuth` JavaScript channel in your WebViewController
+2. **JSON Parsing**: Parse the incoming message as JSON to extract tokens and profile
+3. **Fallbacks**: If needed, you can poll `window.authData` or `localStorage.authData` from the WebView
+4. **Secure Storage**: Always use `flutter_secure_storage` for token storage, never plain SharedPreferences
+5. **Token Expiry**: Check if token has expired before making API calls
+6. **Token Refresh**: Implement token refresh logic using the refresh token
+7. **Error Handling**: Handle cases where tokens are missing or invalid
+8. **Navigation**: After successful token receipt, navigate away from login screen
 
 ## Common Issues
 
-### Issue: Print channel not receiving messages
+### Issue: KingsListAuth channel not receiving messages
 - Ensure JavaScript mode is set to `unrestricted` in WebViewController
-- Verify the JavaScript channel name matches exactly: `'Print'`
-- Check that the React app is correctly calling `Print.postMessage()`
+- Verify the JavaScript channel name matches exactly: `'KingsListAuth'`
+- Check that the React app is correctly calling `KingsListAuth.postMessage()`
 
 ### Issue: Token payload is empty
 - Verify the login was successful in React
