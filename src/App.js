@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { login } from "./services/kingschat";
+import { login, fetchUserProfile } from "./services/kingschat";
 import TokenCallback from "./TokenCallback";
 
 function LoginForm() {
@@ -91,6 +91,14 @@ function LoginForm() {
     try {
       const authResponse = await login();
 
+      let profile = null;
+      try {
+        profile = await fetchUserProfile(authResponse.accessToken);
+        console.log("Profile fetched:", profile);
+      } catch (profileError) {
+        console.warn("Profile fetch failed, continuing without profile.", profileError);
+      }
+
       const sessionData = {
         accessToken: authResponse.accessToken,
         refreshToken: authResponse.refreshToken || "",
@@ -101,7 +109,7 @@ function LoginForm() {
       setIsLoggedIn(true);
       
       // Set tokens and show callback component
-      setTokens(authResponse);
+      setTokens({ ...authResponse, profile });
       setShowCallback(true);
     } catch (err) {
       setError("Failed to log in. Please try again.");
