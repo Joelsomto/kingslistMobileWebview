@@ -7,12 +7,13 @@ function TokenCallback({ tokens, onClose }) {
       const tokenData = {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken || "",
-        expiresIn: tokens.expiresIn || 3600,
+        expiresIn: (tokens.expiresIn || 3600) * 1000, // Convert to milliseconds
         timestamp: Date.now(),
         profile: tokens.profile || null
       };
 
       console.log("Sending tokens to Dart app via KingsListAuth.postMessage");
+      console.log("Token payload:", JSON.stringify(tokenData, null, 2));
       
       // Send to Dart WebView
       if (window.KingsListAuth && window.KingsListAuth.postMessage) {
