@@ -12,6 +12,10 @@ function TokenCallback({ tokens, onClose }) {
         profile: tokens.profile || null
       };
 
+      // Expose auth data for polling-based integrations
+      window.authData = tokenData;
+      localStorage.setItem("authData", JSON.stringify(tokenData));
+
       // Log the exact call being made
       console.log(`KingsListAuth.postMessage(JSON.stringify(${JSON.stringify(tokenData, null, 2)}));`);
       

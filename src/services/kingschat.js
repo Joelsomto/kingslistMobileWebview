@@ -40,6 +40,30 @@ export const refreshToken = async (refreshToken) => {
   }
 };
 
+export const fetchUserProfile = async (accessToken) => {
+  try {
+    const response = await fetch("https://connect.kingsch.at/developer/api/profile", {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Profile request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.profile || null;
+  } catch (error) {
+    console.error("Profile fetch failed:", {
+      message: error.message,
+      stack: error.stack
+    });
+    throw new Error(`Profile fetch failed: ${error.message || "Unknown error"}`);
+  }
+};
+
 // export const sendMessage = async (accessToken, userIdentifier, message) => {
 //   try {
 //     console.log("Sending message to:", userIdentifier);
