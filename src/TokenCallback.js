@@ -12,8 +12,8 @@ function TokenCallback({ tokens, onClose }) {
         profile: tokens.profile || null
       };
 
-      console.log("Sending tokens to Dart app via KingsListAuth.postMessage");
-      console.log("Token payload:", JSON.stringify(tokenData, null, 2));
+      // Log the exact call being made
+      console.log(`KingsListAuth.postMessage(JSON.stringify(${JSON.stringify(tokenData, null, 2)}));`);
       
       // Send to Dart WebView
       if (window.KingsListAuth && window.KingsListAuth.postMessage) {
