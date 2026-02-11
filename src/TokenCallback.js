@@ -1,40 +1,81 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 function TokenCallback({ tokens, onClose }) {
+  const sentRef = useRef(false);
+
   useEffect(() => {
-    if (tokens) {
-      // Expose tokens via KingsListAuth.postMessage() to Dart/Flutter WebView
-      const tokenData = {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken || "",
-        expiresIn: (tokens.expiresIn || 3600) * 1000, // Convert to milliseconds
-        timestamp: Date.now(),
-        profile: tokens.profile || null
-      };
+    if (!tokens || sentRef.current) return;
 
-      // Expose auth data for polling-based integrations
-      window.authData = tokenData;
+    const tokenData = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken || "",
+      expiresIn: (tokens.expiresIn || 3600) * 1000, // Convert to milliseconds
+      timestamp: Date.now(),
+      profile: tokens.profile || null
+    };
+
+    // ── Always store for polling-based retrieval ──
+    window.authData = tokenData;
+    try {
       localStorage.setItem("authData", JSON.stringify(tokenData));
+    } catch (e) {
+      console.warn("localStorage.setItem failed:", e);
+    }
 
-      // Log the exact call being made
-      console.log(`KingsListAuth.postMessage(JSON.stringify(${JSON.stringify(tokenData, null, 2)}));`);
-      
-      // Send to Dart WebView
-      if (window.KingsListAuth && window.KingsListAuth.postMessage) {
-        window.KingsListAuth.postMessage(JSON.stringify(tokenData));
-      } else {
-        console.warn("KingsListAuth.postMessage not available - may not be running in Dart WebView");
+    console.log("[TokenCallback] Auth data stored. Attempting to send to Flutter...");
+
+    // ── Try to send to Flutter via JS channels ──
+    // Retry multiple times because channels may not be ready immediately
+    // (especially after navigation back from KC login page)
+    let attempt = 0;
+    const maxAttempts = 10;
+
+    const trySend = () => {
+      attempt++;
+      const json = JSON.stringify(tokenData);
+      const channels = ["KingsListBridge", "KingsListAuth", "FlutterChannel"];
+
+      for (const ch of channels) {
+        try {
+          if (window[ch] && typeof window[ch].postMessage === "function") {
+            window[ch].postMessage(json);
+            console.log(`[TokenCallback] ✅ Sent via ${ch} (attempt ${attempt})`);
+            sentRef.current = true;
+            // Still call onClose after a delay
+            setTimeout(() => { if (onClose) onClose(); }, 500);
+            return;
+          }
+        } catch (e) {
+          console.warn(`[TokenCallback] ${ch} failed:`, e);
+        }
       }
 
-      // Close after a short delay to ensure message is sent
-      const timer = setTimeout(() => {
-        if (onClose) {
-          onClose();
+      // Also try sendAuthToFlutter (set by bridge injection)
+      try {
+        if (window.sendAuthToFlutter) {
+          const result = window.sendAuthToFlutter(tokenData);
+          if (result) {
+            console.log(`[TokenCallback] ✅ Sent via sendAuthToFlutter (attempt ${attempt})`);
+            sentRef.current = true;
+            setTimeout(() => { if (onClose) onClose(); }, 500);
+            return;
+          }
         }
-      }, 500);
+      } catch (e) {}
 
-      return () => clearTimeout(timer);
-    }
+      if (attempt < maxAttempts) {
+        console.log(`[TokenCallback] No channel available (attempt ${attempt}/${maxAttempts}), retrying in 500ms...`);
+        setTimeout(trySend, 500);
+      } else {
+        console.log("[TokenCallback] Max attempts reached. Data is stored in window.authData and localStorage for polling.");
+        // Close anyway - Flutter polling will pick up the data
+        setTimeout(() => { if (onClose) onClose(); }, 1000);
+      }
+    };
+
+    // Start sending attempts immediately
+    trySend();
+
   }, [tokens, onClose]);
 
   const containerStyle = {

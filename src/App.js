@@ -2,6 +2,37 @@ import React, { useState, useEffect } from "react";
 import { login, fetchUserProfile } from "./services/kingschat";
 import TokenCallback from "./TokenCallback";
 
+// Detect if running inside Flutter WebView
+function isInWebView() {
+  return !!(
+    window.KingsListAuth ||
+    window.KingsListBridge ||
+    window.FlutterChannel
+  );
+}
+
+// Send auth data to Flutter via any available channel
+function sendToFlutter(data) {
+  const json = typeof data === "string" ? data : JSON.stringify(data);
+  console.log("[sendToFlutter] Sending auth data...");
+
+  // Also expose globally for polling
+  window.authData = typeof data === "string" ? JSON.parse(data) : data;
+
+  const channels = ["KingsListBridge", "KingsListAuth", "FlutterChannel"];
+  for (const ch of channels) {
+    try {
+      if (window[ch] && window[ch].postMessage) {
+        window[ch].postMessage(json);
+        console.log("[sendToFlutter] Sent via " + ch);
+        return true;
+      }
+    } catch (e) {}
+  }
+  console.log("[sendToFlutter] No channel available, stored in window.authData");
+  return false;
+}
+
 function LoginForm() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     return localStorage.getItem("kc_session") !== null;
@@ -85,6 +116,7 @@ function LoginForm() {
     animation: "spin 1s ease-in-out infinite"
   };
 
+  // ── Handle login ──
   const handleLogin = async () => {
     setError("");
     setLoading(true);
@@ -107,7 +139,7 @@ function LoginForm() {
       };
       localStorage.setItem("kc_session", JSON.stringify(sessionData));
       setIsLoggedIn(true);
-      
+
       // Set tokens and show callback component
       setTokens({ ...authResponse, profile });
       setShowCallback(true);
@@ -119,26 +151,63 @@ function LoginForm() {
     }
   };
 
+  // ── On mount: re-send existing auth data to Flutter if in WebView ──
+  useEffect(() => {
+    const checkAndSendExistingAuth = () => {
+      if (!isInWebView()) return;
+
+      // Check localStorage authData (set by TokenCallback)
+      try {
+        const stored = localStorage.getItem("authData");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.accessToken) {
+            console.log("[WebView] Found existing authData, re-sending to Flutter");
+            sendToFlutter(parsed);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // Check kc_session
+      try {
+        const session = localStorage.getItem("kc_session");
+        if (session) {
+          const parsed = JSON.parse(session);
+          if (parsed.accessToken) {
+            console.log("[WebView] Found existing kc_session, sending to Flutter");
+            sendToFlutter(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+
+    // Small delay for Flutter JS channels to initialize
+    const timer = setTimeout(checkAndSendExistingAuth, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // ── Session verification ──
   useEffect(() => {
     const verifySession = async () => {
       const session = localStorage.getItem("kc_session");
       if (!session) return;
-  
+
       try {
         const sessionData = JSON.parse(session);
         const response = await fetch(
           "https://kingslist.pro/app/default/api/verify_session.php",
           {
             method: "POST",
-            credentials: 'include',
+            credentials: "include",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               accessToken: sessionData.accessToken,
-              refreshToken: sessionData.refreshToken
+              refreshToken: sessionData.refreshToken,
             }),
           }
         );
-  
+
         if (response.ok) {
           const data = await response.json();
           if (!data.valid) {
@@ -148,7 +217,7 @@ function LoginForm() {
             const updatedSession = {
               ...sessionData,
               accessToken: data.newToken,
-              timestamp: Date.now()
+              timestamp: Date.now(),
             };
             localStorage.setItem("kc_session", JSON.stringify(updatedSession));
           }
@@ -159,7 +228,7 @@ function LoginForm() {
         setIsLoggedIn(false);
       }
     };
-  
+
     verifySession();
     const interval = setInterval(verifySession, 300000);
     return () => clearInterval(interval);
@@ -167,10 +236,15 @@ function LoginForm() {
 
   // Show token callback if login was successful
   if (showCallback && tokens) {
-    return <TokenCallback tokens={tokens} onClose={() => {
-      setShowCallback(false);
-      setTokensExposed(true);
-    }} />;
+    return (
+      <TokenCallback
+        tokens={tokens}
+        onClose={() => {
+          setShowCallback(false);
+          setTokensExposed(true);
+        }}
+      />
+    );
   }
 
   // Show success message after tokens are exposed
@@ -180,7 +254,7 @@ function LoginForm() {
         <div style={cardStyle}>
           <h2 style={headingStyle}>✓ Connection Successful</h2>
           <p style={textStyle}>Your account has been connected to the app.</p>
-          <p style={{...textStyle, fontSize: "13px", color: "#999"}}>
+          <p style={{ ...textStyle, fontSize: "13px", color: "#999" }}>
             You can now close this window.
           </p>
         </div>
@@ -194,10 +268,12 @@ function LoginForm() {
         <div style={cardStyle}>
           <h2 style={headingStyle}>Welcome Back!</h2>
           <p style={textStyle}>You are already logged in.</p>
-          <button 
+          <button
             style={buttonStyle}
             onClick={() => {
               localStorage.removeItem("kc_session");
+              localStorage.removeItem("authData");
+              window.authData = null;
               setIsLoggedIn(false);
               setShowCallback(false);
               setTokens(null);
@@ -216,7 +292,7 @@ function LoginForm() {
       <div style={cardStyle}>
         <h2 style={headingStyle}>Login with KingsChat</h2>
         <p style={textStyle}>Connect your KingsChat account to continue</p>
-        
+
         {error && <div style={errorStyle}>{error}</div>}
 
         <button
